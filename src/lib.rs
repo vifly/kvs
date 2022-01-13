@@ -1,4 +1,5 @@
 mod error;
+mod engines;
 
 use crate::error::KvStoreError;
 use serde::{Deserialize, Serialize};
@@ -7,6 +8,7 @@ use std::collections::HashMap;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::fs::{create_dir_all, remove_file, rename, File, OpenOptions};
 use std::path::PathBuf;
+pub use engines::KvsEngine;
 
 pub type Result<T> = std::result::Result<T, KvStoreError>;
 

@@ -1,18 +1,31 @@
 extern crate anyhow;
 extern crate clap;
 
+use std::net::SocketAddr;
 use anyhow::Result;
 use clap::{crate_authors, crate_description, crate_version, load_yaml, App};
 use kvs::KvStore;
 use std::process::exit;
 
 fn main() -> Result<()> {
-    let yaml = load_yaml!("cli.yml");
-    let m = App::from(yaml)
+    let yaml = load_yaml!("client-cli.yml");
+    let m = App::from_yaml(yaml)
         .version(crate_version!())
         .about(crate_description!())
         .author(crate_authors!())
         .get_matches();
+
+    let addr = match m.value_of("addr") {
+        Some(val) => val.to_string(),
+        None => "127.0.0.1:4000".to_string(),
+    };
+    let socket_addr: SocketAddr = match addr.parse() {
+        Ok(val) => val,
+        Err(_e) => {
+            println!("The address {} is invalid", &addr);
+            exit(-1);
+        },
+    };
 
     if let Some(ref matches) = m.subcommand_matches("set") {
         if matches.is_present("key") && matches.is_present("value") {
@@ -31,7 +44,7 @@ fn main() -> Result<()> {
                 Some(val) => val,
                 None => {
                     println!("Key not found");
-                    exit(0);
+                    exit(-1);
                 }
             };
             println!("{}", val);

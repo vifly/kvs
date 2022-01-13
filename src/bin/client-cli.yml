@@ -1,4 +1,4 @@
-name: kvs
+name: kvs-client
 
 subcommands:
     - set:
@@ -18,3 +18,11 @@ subcommands:
         args:
             - key:
                 about: key
+
+args:
+    - addr:
+        long: addr
+        value_name: IP-PORT
+        about: "IP:port, used to connect server"
+        takes_value: true
+        global: true
