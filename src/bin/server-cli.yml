@@ -4,13 +4,13 @@ args:
     - addr:
         long: addr
         value_name: IP-PORT
-        about: "IP:port, used to connect server"
+        help: "IP:port, used to connect server"
         takes_value: true
         global: true
     - engine:
         long: engine
         value_name: ENGINE-NAME
-        about: "Specify an engine"
+        help: "Specify an engine"
         takes_value: true
         possible_values: ["kvs", "sled"]
         global: true

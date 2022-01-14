@@ -5,24 +5,24 @@ subcommands:
         about: Set the value of a string key to a string
         args:
             - key:
-                about: key
+                help: key
             - value:
-                about: value
+                help: value
     - get:
         about: Get the string value of a given string key
         args:
             - key:
-                about: key
+                help: key
     - rm:
         about: Remove a given key
         args:
             - key:
-                about: key
+                help: key
 
 args:
     - addr:
         long: addr
         value_name: IP-PORT
-        about: "IP:port, used to connect server"
+        help: "IP:port, used to connect server"
         takes_value: true
         global: true
