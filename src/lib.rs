@@ -1,7 +1,9 @@
 mod error;
 mod engines;
+mod server;
+mod client;
 
-use crate::error::KvStoreError;
+use crate::error::KvsError;
 use serde::{Deserialize, Serialize};
 use serde_json;
 use std::collections::HashMap;
@@ -9,8 +11,10 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use std::fs::{create_dir_all, remove_file, rename, File, OpenOptions};
 use std::path::PathBuf;
 pub use engines::KvsEngine;
+pub use server::KvsServer;
+pub use client::KvsClient;
 
-pub type Result<T> = std::result::Result<T, KvStoreError>;
+pub type Result<T> = std::result::Result<T, KvsError>;
 
 const COMPACT_NUM_THRESHOLD: usize = 512;
 
@@ -32,6 +36,25 @@ pub struct KvStore {
 enum LogEntry {
     Set { key: String, value: String },
     Rm { key: String },
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Response {
+    is_ok: bool,
+    data: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum Request {
+    Set { key: String, value: String },
+    Get { key: String },
+    Rm { key: String },
+}
+
+impl Response {
+    pub fn new(is_ok: bool, data: String) -> Response {
+        Response { is_ok, data }
+    }
 }
 
 impl KvStore {
@@ -102,7 +125,7 @@ impl KvStore {
             let log_entry: LogEntry = serde_json::from_slice(&buf)?;
             return match log_entry {
                 LogEntry::Set { key: _, value } => Ok(Some(value)),
-                _ => Err(KvStoreError::Unknown),
+                _ => Err(KvsError::Unknown),
             };
         } else {
             return Ok(None);
@@ -111,7 +134,7 @@ impl KvStore {
 
     pub fn remove(&mut self, key: String) -> Result<()> {
         if self.store_map.contains_key(&key) == false {
-            return Err(KvStoreError::KeyNotFound(key));
+            return Err(KvsError::KeyNotFound(key));
         }
         self.store_map.remove(&key);
         let log_entry = LogEntry::Rm { key };
@@ -146,7 +169,7 @@ impl KvStore {
             let store_file = File::open(path.join("kvs_log_entry"))?;
             let file_size = store_file.metadata()?.len();
             if file_size as usize != kvs.cur_file_end {
-                return Err(KvStoreError::RecordError());
+                return Err(KvsError::RecordError());
             }
             return Ok(kvs);
         }

@@ -2,7 +2,7 @@ use serde_json;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum KvStoreError {
+pub enum KvsError {
     #[error(transparent)]
     IOError(#[from] std::io::Error),
 
@@ -14,6 +14,9 @@ pub enum KvStoreError {
 
     #[error(transparent)]
     SerdeError(#[from] serde_json::Error),
+
+    #[error("failed to exec command, server return error: `{0}`")]
+    ServerRespError(String),
 
     #[error("unknown error")]
     Unknown,
