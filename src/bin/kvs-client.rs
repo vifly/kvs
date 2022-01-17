@@ -40,7 +40,7 @@ fn main() -> Result<()> {
                 Some(val) => val,
                 None => {
                     println!("Key not found");
-                    exit(-1);
+                    exit(0);
                 }
             };
             println!("{}", val);
@@ -51,7 +51,7 @@ fn main() -> Result<()> {
         if matches.is_present("key") {
             let key = matches.value_of("key").unwrap().to_string();
             if !client.is_key_exist(&key)? {
-                println!("Key not found");
+                eprintln!("Key not found");
                 exit(-1);
             }
             client.remove(&key)?;
