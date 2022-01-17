@@ -1,4 +1,5 @@
 use serde_json;
+use sled;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -17,6 +18,9 @@ pub enum KvsError {
 
     #[error("failed to exec command, server return error: `{0}`")]
     ServerRespError(String),
+
+    #[error(transparent)]
+    SledError(#[from] sled::Error),
 
     #[error("unknown error")]
     Unknown,

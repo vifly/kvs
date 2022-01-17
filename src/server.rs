@@ -1,22 +1,82 @@
-use std::io::{BufReader, BufWriter, Write};
+use std::fs::{File, OpenOptions};
+use std::io::{BufReader, BufWriter, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::path::PathBuf;
 use std::process::exit;
-use serde_json::{Deserializer, to_writer};
 
+use serde_json::{Deserializer, to_writer};
 use slog_scope::{debug, error};
 
-use crate::{KvStore, Request, Response, Result};
+use crate::{KvsEngine, KvStore, Request, Response, Result, SledKvsEngine};
 
 pub struct KvsServer {
     addr: SocketAddr,
+    engine: Box<dyn KvsEngine>,
+}
+
+fn get_engine(engine: &str, path: impl Into<PathBuf>) -> Result<Option<String>> {
+    let path = path.into().join("engine");
+    if path.exists() {
+        let mut file = File::open(path)?;
+        let mut contents = String::new();
+        file.read_to_string(&mut contents)?;
+        return Ok(Some(contents));
+    }
+    return Ok(None);
+}
+
+fn write_engine(engine: &str, path: impl Into<PathBuf>) -> Result<()> {
+    let path = path.into().join("engine");
+    let mut file = OpenOptions::new()
+        .create(true)
+        .write(true)
+        .append(false)
+        .open(path)?;
+    file.write(engine.as_bytes())?;
+
+    Ok(())
 }
 
 impl KvsServer {
-    pub fn new(addr: SocketAddr) -> KvsServer {
-        KvsServer { addr }
+    pub fn new(addr: SocketAddr, engine: String) -> KvsServer {
+        match get_engine(&engine, "./") {
+            Ok(res) => {
+                if let Some(val) = res {
+                    if val.ne(&engine) {
+                        error!("Wrong engine, before: {}, now: {}", val, engine);
+                        exit(-1);
+                    }
+                }
+            },
+            Err(e) => {
+                error!("Can't get engine record: {}", e);
+                exit(-1);
+            }
+        };
+        if engine.eq("kvs") {
+            let mut kvs = KvStore::open("./").unwrap_or_else(|e| {
+                error!("Can't open KvStore: {}", e);
+                exit(-1);
+            });
+            write_engine(&engine, "./").unwrap_or_else(|e| {
+                error!("Can't write engine record: {}", e);
+                exit(-1);
+            });
+            return KvsServer { addr, engine: Box::new(kvs) };
+        } else {
+            let mut sled = SledKvsEngine::open("./").unwrap_or_else(|e| {
+                error!("Can't open Sled: {}", e);
+                exit(-1);
+            });
+            write_engine(&engine, "./").unwrap_or_else(|e| {
+                error!("Can't write engine record: {}", e);
+                exit(-1);
+            });
+            return KvsServer { addr, engine: Box::new(sled) };
+        }
     }
 
-    pub fn handle_connection(&self) {
+    pub fn handle_connection(&mut self) {
         let listener = match TcpListener::bind(self.addr) {
             Ok(listener) => listener,
             Err(e) => {
@@ -39,7 +99,7 @@ impl KvsServer {
         drop(listener);
     }
 
-    fn handle_stream(&self, stream: &TcpStream) {
+    fn handle_stream(&mut self, stream: &TcpStream) {
         let reader = BufReader::new(stream);
         let request_reader = Deserializer::from_reader(reader).into_iter::<Request>();
         for command in request_reader {
@@ -49,7 +109,7 @@ impl KvsServer {
                         Ok(_) => debug!("Send response."),
                         Err(e) => error!("Failed to send response: {}", e)
                     };
-                },
+                }
                 Err(e) => {
                     error!("Can't parse request: {}", e);
                 }
@@ -57,13 +117,13 @@ impl KvsServer {
         }
     }
 
-    fn send_resp(&self, stream: &TcpStream, request: &Request) -> Result<()> {
+    fn send_resp(&mut self, stream: &TcpStream, request: &Request) -> Result<()> {
         let mut writer = BufWriter::new(stream);
-        let mut kvs = KvStore::open("./")?;
+
 
         match request {
             Request::Set { key, value } => {
-                match kvs.set(key.to_string(), value.to_string()) {
+                match self.engine.set(key.to_string(), value.to_string()) {
                     Ok(_) => {
                         to_writer(&mut writer, &Response::new(true, "".to_string()))?;
                     }
@@ -71,9 +131,9 @@ impl KvsServer {
                         to_writer(&mut writer, &Response::new(false, e.to_string()))?;
                     }
                 };
-            },
+            }
             Request::Get { key } => {
-                match kvs.get(key.to_string()) {
+                match self.engine.get(key.to_string()) {
                     Ok(val) => {
                         let value = val.unwrap_or("".to_string());
                         to_writer(&mut writer, &Response::new(true, value.to_string()))?;
@@ -82,9 +142,9 @@ impl KvsServer {
                         to_writer(&mut writer, &Response::new(false, e.to_string()))?;
                     }
                 };
-            },
+            }
             Request::Rm { key } => {
-                match kvs.remove(key.to_string()) {
+                match self.engine.remove(key.to_string()) {
                     Ok(_) => {
                         to_writer(&mut writer, &Response::new(true, "".to_string()))?;
                     }
@@ -92,7 +152,7 @@ impl KvsServer {
                         to_writer(&mut writer, &Response::new(false, e.to_string()))?;
                     }
                 };
-            },
+            }
         }
         writer.flush()?;
 

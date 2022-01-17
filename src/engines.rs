@@ -1,9 +1,10 @@
-use crate::error::KvStoreError;
-
-type Result<T> = std::result::Result<T, KvStoreError>;
+use crate::Result;
 
 pub trait KvsEngine {
+    // Set the value of a string key to a string.
     fn set(&mut self, key: String, value: String) -> Result<()>;
-    fn get(&mut self, key: String) -> Result<Option<String>>;
+    // Get the string value of a string key.
+    fn get(&self, key: String) -> Result<Option<String>>;
+    // Remove a given string key.
     fn remove(&mut self, key: String) -> Result<()>;
 } 

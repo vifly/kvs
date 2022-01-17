@@ -5,10 +5,12 @@ extern crate slog;
 extern crate slog_scope;
 extern crate slog_term;
 
-use clap::{crate_authors, crate_description, crate_version, load_yaml, App};
-use slog::{Drain, PushFnValue, PushFnValueSerializer, Record};
 use std::net::SocketAddr;
 use std::process::exit;
+
+use clap::{App, crate_authors, crate_description, crate_version, load_yaml};
+use slog::{Drain, PushFnValue, PushFnValueSerializer, Record};
+
 use kvs::KvsServer;
 
 fn main() {
@@ -29,8 +31,7 @@ fn main() {
     };
     let engine = m.value_of("engine").unwrap_or("kvs").to_string();
 
-
-    let plain = slog_term::PlainSyncDecorator::new(std::io::stdout());
+    let plain = slog_term::PlainSyncDecorator::new(std::io::stderr());
     let logger = slog::Logger::root(
         slog_term::FullFormat::new(plain).build().fuse(),
         o!("src" => PushFnValue(|r: &Record, ser: PushFnValueSerializer| {
@@ -43,6 +44,6 @@ fn main() {
     info!("Run with {} engine", engine);
     info!("Listening on {}", addr);
 
-    let server = KvsServer::new(socket_addr);
+    let mut server = KvsServer::new(socket_addr, engine);
     server.handle_connection();
 }
