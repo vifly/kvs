@@ -25,3 +25,7 @@ predicates = "2.0"
 rand = "0.8"
 tempfile = "3.0"
 walkdir = "2.2"
+
+[[bench]]
+name = "benches"
+harness = false
