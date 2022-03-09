@@ -1,10 +1,12 @@
 use std::collections::HashMap;
 use std::iter::FromIterator;
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use kvs::{KvStore, KvsEngine, SledKvsEngine};
+
+use criterion::{black_box, Criterion, criterion_group, criterion_main};
 use rand;
-use rand::{Rng, SeedableRng, distributions::Alphanumeric};
+use rand::{distributions::Alphanumeric, Rng, SeedableRng};
 use tempfile::TempDir;
+
+use kvs::{KvsEngine, KvStore, SledKvsEngine};
 
 fn get_random_write_data() -> HashMap<String, String> {
     let mut key_val: HashMap<String, String> = HashMap::new();
