@@ -1,11 +1,10 @@
+use serde_json::{Deserializer, to_writer};
+use slog_scope::{debug, error};
 use std::fs::{File, OpenOptions};
 use std::io::{BufReader, BufWriter, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::process::exit;
-
-use serde_json::{Deserializer, to_writer};
-use slog_scope::{debug, error};
 
 use crate::{KvsEngine, KvStore, Request, Response, Result, SledKvsEngine};
 
@@ -14,7 +13,7 @@ pub struct KvsServer {
     engine: Box<dyn KvsEngine>,
 }
 
-fn get_engine(engine: &str, path: impl Into<PathBuf>) -> Result<Option<String>> {
+fn get_engine_name(path: impl Into<PathBuf>) -> Result<Option<String>> {
     let path = path.into().join("engine");
     if path.exists() {
         let mut file = File::open(path)?;
@@ -39,7 +38,7 @@ fn write_engine(engine: &str, path: impl Into<PathBuf>) -> Result<()> {
 
 impl KvsServer {
     pub fn new(addr: SocketAddr, engine: String) -> KvsServer {
-        match get_engine(&engine, "./") {
+        match get_engine_name("./") {
             Ok(res) => {
                 if let Some(val) = res {
                     if val.ne(&engine) {
