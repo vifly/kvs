@@ -1,41 +1,94 @@
 extern crate anyhow;
-extern crate clap;
 
 use std::net::SocketAddr;
-use anyhow::Result;
-use clap::{crate_authors, crate_description, crate_version, load_yaml, App};
-use kvs::KvsClient;
 use std::process::exit;
 
-fn main() -> Result<()> {
-    let yaml = load_yaml!("client-cli.yml");
-    let m = App::from_yaml(yaml)
-        .version(crate_version!())
-        .about(crate_description!())
-        .author(crate_authors!())
-        .get_matches();
+use anyhow::Result;
+use argh::FromArgs;
 
-    let addr = m.value_of("addr").unwrap_or("127.0.0.1:4000").to_string();
+use kvs::KvsClient;
+
+#[derive(FromArgs, PartialEq, Debug)]
+/// Kvs client
+struct Args {
+    #[argh(subcommand)]
+    subcommand: Option<SubCommandEnum>,
+
+    #[argh(option)]
+    /// IP:port, used to connect server
+    addr: Option<String>,
+    #[argh(switch, short = 'V')]
+    /// print version information
+    version: bool,
+}
+
+#[derive(FromArgs, PartialEq, Debug)]
+#[argh(subcommand)]
+enum SubCommandEnum {
+    Get(GetSubCommand),
+    Set(SetSubCommand),
+    Rm(RmSubCommand),
+}
+
+#[derive(FromArgs, PartialEq, Debug)]
+/// Get the string value of a given string key
+#[argh(subcommand, name = "get")]
+struct GetSubCommand {
+    #[argh(positional)]
+    /// key
+    key: String,
+}
+
+#[derive(FromArgs, PartialEq, Debug)]
+/// Set the value of a string key to a string
+#[argh(subcommand, name = "set")]
+struct SetSubCommand {
+    #[argh(positional)]
+    /// key
+    key: String,
+
+    #[argh(positional)]
+    /// value
+    value: String,
+}
+
+#[derive(FromArgs, PartialEq, Debug)]
+/// Remove a given key
+#[argh(subcommand, name = "rm")]
+struct RmSubCommand {
+    #[argh(positional)]
+    /// key
+    key: String,
+}
+
+
+fn main() -> Result<()> {
+    let args: Args = argh::from_env();
+
+    if args.version {
+        println!("kvs-client {}", env!("CARGO_PKG_VERSION"));
+        exit(0);
+    }
+
+    let addr = args.addr.unwrap_or("127.0.0.1:4000".to_string());
     let socket_addr: SocketAddr = match addr.parse() {
         Ok(val) => val,
         Err(_e) => {
             println!("The address {} is invalid", &addr);
             exit(-1);
-        },
+        }
     };
     let client = KvsClient::new(socket_addr);
 
-    if let Some(ref matches) = m.subcommand_matches("set") {
-        if matches.is_present("key") && matches.is_present("value") {
-            let key = matches.value_of("key").unwrap().to_string();
-            let value = matches.value_of("value").unwrap().to_string();
-            client.set(&key, &value)?;
-        } else {
+    let subcommand = match args.subcommand {
+        Some(command) => command,
+        None => {
             exit(-1);
         }
-    } else if let Some(ref matches) = m.subcommand_matches("get") {
-        if matches.is_present("key") {
-            let key = matches.value_of("key").unwrap().to_string();
+    };
+    match subcommand {
+        SubCommandEnum::Get(command_arg) => {
+            let key = command_arg.key;
             let val = match client.get(&key)? {
                 Some(val) => val,
                 None => {
@@ -44,23 +97,21 @@ fn main() -> Result<()> {
                 }
             };
             println!("{}", val);
-        } else {
-            exit(-1);
         }
-    } else if let Some(ref matches) = m.subcommand_matches("rm") {
-        if matches.is_present("key") {
-            let key = matches.value_of("key").unwrap().to_string();
+        SubCommandEnum::Rm(command_arg) => {
+            let key = command_arg.key;
             if !client.is_key_exist(&key)? {
                 eprintln!("Key not found");
                 exit(-1);
             }
             client.remove(&key)?;
-        } else {
-            exit(-1);
         }
-    } else {
-        exit(-1);
-    }
+        SubCommandEnum::Set(command_arg) => {
+            let key = command_arg.key;
+            let value = command_arg.value;
+            client.set(&key, &value)?;
+        }
+    };
 
     Ok(())
 }
