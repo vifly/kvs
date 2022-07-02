@@ -10,7 +10,7 @@ use std::process::exit;
 
 use argh::FromArgs;
 use slog::{Drain, PushFnValue, PushFnValueSerializer, Record};
-use strum_macros;
+
 
 use kvs::KvsServer;
 

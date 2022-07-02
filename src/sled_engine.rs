@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use sled;
+
 use sled::IVec;
 
 use crate::{KvsEngine, Result};

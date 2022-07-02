@@ -5,7 +5,7 @@ use std::io::BufReader;
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
-use serde_json;
+
 use serde_json::Deserializer;
 
 use crate::{KvsEngine, KvsError, Result};
@@ -91,7 +91,7 @@ fn rebuild_map(log_entry_path: impl Into<PathBuf>) -> Result<HashMap<String, Log
 impl KvStore {
     pub fn new(path: impl Into<PathBuf>, cur_file_end: usize) -> KvStore {
         let since_last_compact_log_num = 0;
-        let path_buf = path.into().clone();
+        let path_buf = path.into();
         let log_entry_path = path_buf.join("kvs_log_entry");
         let mut store_map = HashMap::new();
         if log_entry_path.exists() {
@@ -116,14 +116,14 @@ impl KvStore {
             .append(true)
             .open(&self.metadata.store_path.join("kvs_log_entry"))?;
         let serialized_log = serde_json::to_vec(&log_entry)?;
-        store_file.write(&serialized_log)?;
+        store_file.write_all(&serialized_log)?;
 
         let log_pos = LogPosition {
             start: self.metadata.cur_file_end,
             len: serialized_log.len(),
         };
-        self.metadata.cur_file_end = self.metadata.cur_file_end + serialized_log.len();
-        self.metadata.since_last_compact_log_num = self.metadata.since_last_compact_log_num + 1;
+        self.metadata.cur_file_end += serialized_log.len();
+        self.metadata.since_last_compact_log_num += 1;
 
         Ok(log_pos)
     }
@@ -131,7 +131,7 @@ impl KvStore {
     fn save_metadata(&self) -> Result<()> {
         let serialized_kvs = serde_json::to_string(&self.metadata)?;
         let mut file = File::create(self.metadata.store_path.join("kvs_metadata"))?;
-        file.write(serialized_kvs.as_bytes())?;
+        file.write_all(serialized_kvs.as_bytes())?;
 
         Ok(())
     }
@@ -139,12 +139,12 @@ impl KvStore {
     pub fn open(path: impl Into<PathBuf>) -> Result<KvStore> {
         let path = path.into();
         let kvs_metadata_path = path.join("kvs_metadata");
-        if kvs_metadata_path.exists() == false {
-            if path.exists() == false {
+        if !kvs_metadata_path.exists() {
+            if !path.exists() {
                 create_dir_all(&path)?;
             }
             File::create(&kvs_metadata_path)?;
-            return Ok(KvStore::new(path, 0));
+            Ok(KvStore::new(path, 0))
         } else {
             let mut file = File::open(kvs_metadata_path)?;
             if file.metadata()?.len() == 0 {
@@ -160,7 +160,7 @@ impl KvStore {
             if file_size as usize != kvs.metadata.cur_file_end {
                 return Err(KvsError::RecordError());
             }
-            return Ok(kvs);
+            Ok(kvs)
         }
     }
 
@@ -170,7 +170,7 @@ impl KvStore {
             .write(true)
             .append(true)
             .open(&self.metadata.store_path.join("kvs_log_entry.new"))?;
-        store_file.write(content)?;
+        store_file.write_all(content)?;
 
         rename(
             &self.metadata.store_path.join("kvs_log_entry"),
@@ -206,7 +206,7 @@ impl KvStore {
                 start: self.metadata.cur_file_end,
                 len: serialized_log.len(),
             };
-            self.metadata.cur_file_end = self.metadata.cur_file_end + serialized_log.len();
+            self.metadata.cur_file_end += serialized_log.len();
 
             new_store_map.insert(key.clone(), log_pos);
         }
@@ -244,17 +244,17 @@ impl KvsEngine for KvStore {
             let mut buf = Vec::with_capacity(log_pos.len);
             file.take(log_pos.len as u64).read_to_end(&mut buf)?;
             let log_entry: LogEntry = serde_json::from_slice(&buf)?;
-            return match log_entry {
+            match log_entry {
                 LogEntry::Set { key: _, value } => Ok(Some(value)),
                 _ => Err(KvsError::Unknown),
-            };
+            }
         } else {
-            return Ok(None);
+            Ok(None)
         }
     }
 
     fn remove(&mut self, key: String) -> Result<()> {
-        if self.store_map.contains_key(&key) == false {
+        if !self.store_map.contains_key(&key) {
             return Err(KvsError::KeyNotFound(key));
         }
         self.store_map.remove(&key);

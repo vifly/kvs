@@ -21,7 +21,7 @@ fn get_engine_name(path: impl Into<PathBuf>) -> Result<Option<String>> {
         file.read_to_string(&mut contents)?;
         return Ok(Some(contents));
     }
-    return Ok(None);
+    Ok(None)
 }
 
 fn write_engine(engine: &str, path: impl Into<PathBuf>) -> Result<()> {
@@ -31,7 +31,7 @@ fn write_engine(engine: &str, path: impl Into<PathBuf>) -> Result<()> {
         .write(true)
         .append(false)
         .open(path)?;
-    file.write(engine.as_bytes())?;
+    file.write_all(engine.as_bytes())?;
 
     Ok(())
 }
@@ -53,7 +53,7 @@ impl KvsServer {
             }
         };
         if engine.eq("kvs") {
-            let mut kvs = KvStore::open("./").unwrap_or_else(|e| {
+            let kvs = KvStore::open("./").unwrap_or_else(|e| {
                 error!("Can't open KvStore: {}", e);
                 exit(-1);
             });
@@ -61,9 +61,9 @@ impl KvsServer {
                 error!("Can't write engine record: {}", e);
                 exit(-1);
             });
-            return KvsServer { addr, engine: Box::new(kvs) };
+            KvsServer { addr, engine: Box::new(kvs) }
         } else {
-            let mut sled = SledKvsEngine::open("./").unwrap_or_else(|e| {
+            let sled = SledKvsEngine::open("./").unwrap_or_else(|e| {
                 error!("Can't open Sled: {}", e);
                 exit(-1);
             });
@@ -71,7 +71,7 @@ impl KvsServer {
                 error!("Can't write engine record: {}", e);
                 exit(-1);
             });
-            return KvsServer { addr, engine: Box::new(sled) };
+            KvsServer { addr, engine: Box::new(sled) }
         }
     }
 
@@ -135,7 +135,7 @@ impl KvsServer {
                 match self.engine.get(key.to_string()) {
                     Ok(val) => {
                         let value = val.unwrap_or("".to_string());
-                        to_writer(&mut writer, &Response::new(true, value.to_string()))?;
+                        to_writer(&mut writer, &Response::new(true, value))?;
                     }
                     Err(e) => {
                         to_writer(&mut writer, &Response::new(false, e.to_string()))?;
