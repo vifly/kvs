@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::iter::FromIterator;
 
-use criterion::{black_box, Criterion, criterion_group, criterion_main};
-use rand;
+use criterion::{Criterion, criterion_group, criterion_main};
+
 use rand::{distributions::Alphanumeric, Rng, SeedableRng};
 use tempfile::TempDir;
 
@@ -25,7 +25,7 @@ fn get_random_write_data() -> HashMap<String, String> {
             .collect();
         key_val.insert(key, val);
     }
-    return key_val;
+    key_val
 }
 
 fn get_random_read_keys(data: &HashMap<String, String>) -> Vec<String> {
@@ -36,7 +36,7 @@ fn get_random_read_keys(data: &HashMap<String, String>) -> Vec<String> {
         let random_index = rng.gen_range(0..100);
         result.push(keys[random_index].to_string());
     }
-    return result;
+    result
 }
 
 fn engine_benchmark(c: &mut Criterion) {
@@ -49,7 +49,7 @@ fn engine_benchmark(c: &mut Criterion) {
         b.iter(|| {
             let mut store = KvStore::open(kvs_temp_dir.path()).expect("unable to open db");
             for key_val in random_write_data.iter() {
-                store.set(key_val.0.to_string(), key_val.1.to_string());
+                store.set(key_val.0.to_string(), key_val.1.to_string()).unwrap();
             }
         });
     });
@@ -58,7 +58,7 @@ fn engine_benchmark(c: &mut Criterion) {
         b.iter(|| {
             let mut store = SledKvsEngine::open(sled_temp_dir.path()).expect("unable to open db");
             for key_val in random_write_data.iter() {
-                store.set(key_val.0.to_string(), key_val.1.to_string());
+                store.set(key_val.0.to_string(), key_val.1.to_string()).unwrap();
             }
         });
     });

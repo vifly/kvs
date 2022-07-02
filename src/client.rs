@@ -22,49 +22,45 @@ impl KvsClient {
         writer.flush()?;
 
         let resp = Response::deserialize(&mut reader)?;
-        return Ok(resp);
+        Ok(resp)
     }
 
     pub fn set(&self, key: &str, value: &str) -> Result<()> {
         let request = Request::Set { key: key.to_string(), value: value.to_string() };
         let resp = self.send_command(request)?;
-        if resp.is_ok == true {
-            return Ok(());
+        if resp.is_ok {
+            Ok(())
         } else {
-            return Err(KvsError::ServerRespError(resp.data));
+            Err(KvsError::ServerRespError(resp.data))
         }
     }
 
     pub fn get(&self, key: &str) -> Result<Option<String>> {
         let request = Request::Get { key: key.to_string() };
         let resp = self.send_command(request)?;
-        if resp.is_ok == true {
-            if resp.data == "" {
-                return Ok(None);
+        if resp.is_ok {
+            if resp.data.is_empty() {
+                Ok(None)
             } else {
-                return Ok(Some(resp.data));
+                Ok(Some(resp.data))
             }
         } else {
-            return Err(KvsError::ServerRespError(resp.data));
+            Err(KvsError::ServerRespError(resp.data))
         }
     }
 
     pub fn remove(&self, key: &str) -> Result<()> {
         let request = Request::Rm { key: key.to_string() };
         let resp = self.send_command(request)?;
-        if resp.is_ok == true {
-            return Ok(());
+        if resp.is_ok {
+            Ok(())
         } else {
-            return Err(KvsError::ServerRespError(resp.data));
+            Err(KvsError::ServerRespError(resp.data))
         }
     }
 
     pub fn is_key_exist(&self, key: &str) -> Result<bool> {
-        let result = match self.get(key)? {
-            Some(_) => true,
-            None => false
-        };
-
+        let result = self.get(key)?.is_some();
         Ok(result)
     }
 }
