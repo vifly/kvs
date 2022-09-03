@@ -13,7 +13,7 @@ use crate::{KvsEngine, KvsError, Result};
 const COMPACT_NUM_THRESHOLD: usize = 512;
 
 #[derive(Serialize, Deserialize, Debug)]
-struct LogPosition {
+pub struct LogPosition {
     start: usize,
     len: usize,
 }
@@ -25,7 +25,7 @@ enum LogEntry {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct MetaData {
+pub struct MetaData {
     store_path: PathBuf,
     cur_file_end: usize,
     since_last_compact_log_num: usize,
@@ -89,20 +89,22 @@ fn rebuild_map(log_entry_path: impl Into<PathBuf>) -> Result<HashMap<String, Log
 }
 
 impl KvStore {
-    pub fn new(path: impl Into<PathBuf>, cur_file_end: usize) -> KvStore {
-        let since_last_compact_log_num = 0;
-        let path_buf = path.into();
-        let log_entry_path = path_buf.join("kvs_log_entry");
+    pub fn new(path: impl Into<PathBuf>) -> KvStore {
         let mut store_map = HashMap::new();
-        if log_entry_path.exists() {
-            store_map = rebuild_map(log_entry_path).unwrap();
-        }
+        let path_buf = path.into();
 
         let metadata = MetaData {
             store_path: path_buf,
-            cur_file_end,
-            since_last_compact_log_num,
+            cur_file_end: 0,
+            since_last_compact_log_num: 0,
         };
+        KvStore {
+            store_map,
+            metadata,
+        }
+    }
+
+    pub fn new_with_data(metadata: MetaData, store_map: HashMap<String, LogPosition>) -> KvStore {
         KvStore {
             store_map,
             metadata,
@@ -136,27 +138,51 @@ impl KvStore {
         Ok(())
     }
 
+    fn save_memory_map(&self) -> Result<()> {
+        let serialized_kvs = serde_json::to_string(&self.store_map)?;
+        let mut file = File::create(self.metadata.store_path.join("kvs_memory_map"))?;
+        file.write(serialized_kvs.as_bytes())?;
+
+        Ok(())
+    }
+
     pub fn open(path: impl Into<PathBuf>) -> Result<KvStore> {
         let path = path.into();
         let kvs_metadata_path = path.join("kvs_metadata");
+        let log_entry_path = path.join("kvs_log_entry");
+        let memory_map_path = path.join("kvs_memory_map");
         if !kvs_metadata_path.exists() {
             if !path.exists() {
                 create_dir_all(&path)?;
             }
             File::create(&kvs_metadata_path)?;
-            Ok(KvStore::new(path, 0))
+            Ok(KvStore::new(path))
         } else {
             let mut file = File::open(kvs_metadata_path)?;
             if file.metadata()?.len() == 0 {
-                return Ok(KvStore::new(path, 0));
+                return Ok(KvStore::new(path));
             }
-            let mut contents = String::new();
-            file.read_to_string(&mut contents)?;
-            let metadata: MetaData = serde_json::from_str(&contents)?;
-            let kvs: KvStore = KvStore::new(&path, metadata.cur_file_end);
+            let mut metadata_contents = String::new();
+            file.read_to_string(&mut metadata_contents)?;
+            let metadata: MetaData = serde_json::from_str(&metadata_contents)?;
 
-            let store_file = File::open(path.join("kvs_log_entry"))?;
-            let file_size = store_file.metadata()?.len();
+            let mut store_map = HashMap::new();
+            if memory_map_path.exists() {
+                let mut store_map_file = File::open(memory_map_path)?;
+                if store_map_file.metadata().unwrap().len() != 0 {
+                    let mut store_map_contents = String::new();
+                    store_map_file.read_to_string(&mut store_map_contents)?;
+                    store_map = serde_json::from_str(&store_map_contents)?;
+                }
+            }
+            else if log_entry_path.exists() {
+                store_map = rebuild_map(log_entry_path)?;
+            }
+
+            let kvs: KvStore = KvStore::new_with_data(metadata, store_map);
+
+            let log_entry_file = File::open(path.join("kvs_log_entry"))?;
+            let file_size = log_entry_file.metadata()?.len();
             if file_size as usize != kvs.metadata.cur_file_end {
                 return Err(KvsError::RecordError());
             }
@@ -216,6 +242,12 @@ impl KvStore {
         self.save_metadata()?;
 
         Ok(())
+    }
+}
+
+impl Drop for KvStore {
+    fn drop(&mut self) {
+        self.save_memory_map().unwrap();
     }
 }
 
