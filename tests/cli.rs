@@ -158,7 +158,7 @@ fn cli_log_configuration() {
     let stderr_path = temp_dir.path().join("stderr");
     let mut cmd = Command::cargo_bin("kvs-server").unwrap();
     let mut child = cmd
-        .args(&["--addr", "127.0.0.1:4001", "--engine", "kvs"])
+        .args(&["--engine", "kvs", "--addr", "127.0.0.1:4001"])
         .current_dir(&temp_dir)
         .stderr(File::create(&stderr_path).unwrap())
         .spawn()
@@ -179,7 +179,7 @@ fn cli_wrong_engine() {
         let temp_dir = TempDir::new().unwrap();
         let mut cmd = Command::cargo_bin("kvs-server").unwrap();
         let mut child = cmd
-            .args(&["--addr", "127.0.0.1:4002", "--engine", "sled"])
+            .args(&["--engine", "sled", "--addr", "127.0.0.1:4002"])
             .current_dir(&temp_dir)
             .spawn()
             .unwrap();
@@ -187,7 +187,7 @@ fn cli_wrong_engine() {
         child.kill().expect("server exited before killed");
 
         let mut cmd = Command::cargo_bin("kvs-server").unwrap();
-        cmd.args(&["--addr", "127.0.0.1:4003", "--engine", "kvs"])
+        cmd.args(&["--engine", "kvs", "--addr", "127.0.0.1:4003"])
             .current_dir(&temp_dir)
             .assert()
             .failure();
@@ -198,7 +198,7 @@ fn cli_wrong_engine() {
         let temp_dir = TempDir::new().unwrap();
         let mut cmd = Command::cargo_bin("kvs-server").unwrap();
         let mut child = cmd
-            .args(&["--addr", "127.0.0.1:4002", "--engine", "kvs"])
+            .args(&["--engine", "kvs", "--addr", "127.0.0.1:4002"])
             .current_dir(&temp_dir)
             .spawn()
             .unwrap();
@@ -206,7 +206,7 @@ fn cli_wrong_engine() {
         child.kill().expect("server exited before killed");
 
         let mut cmd = Command::cargo_bin("kvs-server").unwrap();
-        cmd.args(&["--addr", "127.0.0.1:4003", "--engine", "sled"])
+        cmd.args(&["--engine", "sled", "--addr", "127.0.0.1:4003"])
             .current_dir(&temp_dir)
             .assert()
             .failure();
@@ -218,7 +218,7 @@ fn cli_access_server(engine: &str, addr: &str) {
     let temp_dir = TempDir::new().unwrap();
     let mut server = Command::cargo_bin("kvs-server").unwrap();
     let mut child = server
-        .args(&["--addr", addr, "--engine", engine])
+        .args(&["--engine", engine, "--addr", addr])
         .current_dir(&temp_dir)
         .spawn()
         .unwrap();
