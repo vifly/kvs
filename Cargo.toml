@@ -28,6 +28,14 @@ rand = "0.8"
 tempfile = "3.0"
 walkdir = "2.2"
 
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+
 [[bench]]
 name = "benches"
 harness = false
