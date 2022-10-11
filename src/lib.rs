@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 pub use client::KvsClient;
+pub use engines::{get_engine_name, write_engine};
 pub use engines::KvsEngine;
 pub use kvs_engine::KvStore;
 pub use server::KvsServer;
@@ -14,6 +15,7 @@ mod server;
 mod client;
 mod kvs_engine;
 mod sled_engine;
+pub mod thread_pool;
 
 pub type Result<T> = std::result::Result<T, KvsError>;
 

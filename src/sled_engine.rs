@@ -1,10 +1,10 @@
 use std::path::PathBuf;
 
-
 use sled::IVec;
 
 use crate::{KvsEngine, Result};
 
+#[derive(Clone)]
 pub struct SledKvsEngine {
     db: sled::Db,
 }
@@ -17,7 +17,7 @@ impl SledKvsEngine {
 }
 
 impl KvsEngine for SledKvsEngine {
-    fn set(&mut self, key: String, value: String) -> Result<()> {
+    fn set(&self, key: String, value: String) -> Result<()> {
         self.db.insert(IVec::from(key.as_str()), IVec::from(value.as_str()))?;
         self.db.flush()?;
         Ok(())
@@ -31,7 +31,7 @@ impl KvsEngine for SledKvsEngine {
         }
     }
 
-    fn remove(&mut self, key: String) -> Result<()> {
+    fn remove(&self, key: String) -> Result<()> {
         self.db.remove(IVec::from(key.as_str()))?;
         self.db.flush()?;
         Ok(())

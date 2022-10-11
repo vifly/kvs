@@ -11,8 +11,7 @@ use std::process::exit;
 use argh::FromArgs;
 use slog::{Drain, PushFnValue, PushFnValueSerializer, Record};
 
-
-use kvs::KvsServer;
+use kvs::{get_engine_name, KvsServer, KvStore, SledKvsEngine, write_engine};
 
 #[derive(Debug, Eq, PartialEq, strum_macros::Display, strum_macros::EnumString)]
 #[strum(serialize_all = "snake_case")]
@@ -55,7 +54,7 @@ fn main() {
         }
     };
 
-    let engine = match args.engine {
+    let engine_name = match args.engine {
         Some(engine_arg) => {
             match engine_arg {
                 Engine::Kvs => Engine::Kvs.to_string(),
@@ -75,9 +74,44 @@ fn main() {
     let _guard = slog_scope::set_global_logger(logger);
 
     info!("Server version: {}", env!("CARGO_PKG_VERSION"));
-    info!("Run with {} engine", engine);
+    info!("Run with {} engine", engine_name);
     info!("Listening on {}", addr);
 
-    let mut server = KvsServer::new(socket_addr, engine);
-    server.handle_connection();
+    match get_engine_name("./") {
+        Ok(res) => {
+            if let Some(val) = res {
+                if val.ne(&engine_name) {
+                    error!("Wrong engine, before: {}, now: {}", val, engine_name);
+                    exit(-1);
+                }
+            }
+        }
+        Err(e) => {
+            error!("Can't get engine record: {}", e);
+            exit(-1);
+        }
+    };
+    if engine_name.eq("kvs") {
+        let kvs = KvStore::open("./").unwrap_or_else(|e| {
+            error!("Can't open KvStore: {}", e);
+            exit(-1);
+        });
+        write_engine(&engine_name, "./").unwrap_or_else(|e| {
+            error!("Can't write engine record: {}", e);
+            exit(-1);
+        });
+        let mut server = KvsServer::new(socket_addr, kvs);
+        server.handle_connection();
+    } else {
+        let sled = SledKvsEngine::open("./").unwrap_or_else(|e| {
+            error!("Can't open Sled: {}", e);
+            exit(-1);
+        });
+        write_engine(&engine_name, "./").unwrap_or_else(|e| {
+            error!("Can't write engine record: {}", e);
+            exit(-1);
+        });
+        let mut server = KvsServer::new(socket_addr, sled);
+        server.handle_connection();
+    }
 }

@@ -13,7 +13,7 @@ strum = { version = "0.24", features = ["derive"] }
 strum_macros = "0.24"
 thiserror = "1.0"
 anyhow = "1.0"
-serde = { version = "1.0", features = ["derive"] }
+serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
 slog = "2.7"
 slog-term = "2.8"
@@ -23,10 +23,12 @@ sled = "0.34"
 [dev-dependencies]
 assert_cmd = "2.0"
 criterion = "0.3"
+crossbeam-utils = "0.8"
 predicates = "2.0"
 rand = "0.8"
 tempfile = "3.0"
 walkdir = "2.2"
+panic-control = "0.1"
 
 [profile.dev.package."*"]
 opt-level = 3

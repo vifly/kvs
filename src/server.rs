@@ -1,78 +1,20 @@
-use serde_json::{Deserializer, to_writer};
-use slog_scope::{debug, error};
-use std::fs::{File, OpenOptions};
 use std::io::{BufReader, BufWriter, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
-use std::path::PathBuf;
 use std::process::exit;
 
-use crate::{KvsEngine, KvStore, Request, Response, Result, SledKvsEngine};
+use serde_json::{Deserializer, to_writer};
+use slog_scope::{debug, error};
 
-pub struct KvsServer {
+use crate::{KvsEngine, Request, Response, Result};
+
+pub struct KvsServer<E: KvsEngine> {
     addr: SocketAddr,
-    engine: Box<dyn KvsEngine>,
+    engine: E,
 }
 
-fn get_engine_name(path: impl Into<PathBuf>) -> Result<Option<String>> {
-    let path = path.into().join("engine");
-    if path.exists() {
-        let mut file = File::open(path)?;
-        let mut contents = String::new();
-        file.read_to_string(&mut contents)?;
-        return Ok(Some(contents));
-    }
-    Ok(None)
-}
-
-fn write_engine(engine: &str, path: impl Into<PathBuf>) -> Result<()> {
-    let path = path.into().join("engine");
-    let mut file = OpenOptions::new()
-        .create(true)
-        .write(true)
-        .append(false)
-        .open(path)?;
-    file.write_all(engine.as_bytes())?;
-
-    Ok(())
-}
-
-impl KvsServer {
-    pub fn new(addr: SocketAddr, engine: String) -> KvsServer {
-        match get_engine_name("./") {
-            Ok(res) => {
-                if let Some(val) = res {
-                    if val.ne(&engine) {
-                        error!("Wrong engine, before: {}, now: {}", val, engine);
-                        exit(-1);
-                    }
-                }
-            },
-            Err(e) => {
-                error!("Can't get engine record: {}", e);
-                exit(-1);
-            }
-        };
-        if engine.eq("kvs") {
-            let kvs = KvStore::open("./").unwrap_or_else(|e| {
-                error!("Can't open KvStore: {}", e);
-                exit(-1);
-            });
-            write_engine(&engine, "./").unwrap_or_else(|e| {
-                error!("Can't write engine record: {}", e);
-                exit(-1);
-            });
-            KvsServer { addr, engine: Box::new(kvs) }
-        } else {
-            let sled = SledKvsEngine::open("./").unwrap_or_else(|e| {
-                error!("Can't open Sled: {}", e);
-                exit(-1);
-            });
-            write_engine(&engine, "./").unwrap_or_else(|e| {
-                error!("Can't write engine record: {}", e);
-                exit(-1);
-            });
-            KvsServer { addr, engine: Box::new(sled) }
-        }
+impl<E: KvsEngine> KvsServer<E> {
+    pub fn new(addr: SocketAddr, engine: E) -> Self {
+        KvsServer { addr, engine }
     }
 
     pub fn handle_connection(&mut self) {
@@ -118,7 +60,6 @@ impl KvsServer {
 
     fn send_resp(&mut self, stream: &TcpStream, request: &Request) -> Result<()> {
         let mut writer = BufWriter::new(stream);
-
 
         match request {
             Request::Set { key, value } => {

@@ -3,9 +3,9 @@ use std::fs::{create_dir_all, File, OpenOptions, remove_file, rename};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::io::BufReader;
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
-
 use serde_json::Deserializer;
 
 use crate::{KvsEngine, KvsError, Result};
@@ -32,9 +32,14 @@ pub struct MetaData {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct KvStore {
-    store_map: HashMap<String, LogPosition>,
+struct MutableKvsData {
     metadata: MetaData,
+    store_map: HashMap<String, LogPosition>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct KvStore {
+    data: Arc<Mutex<MutableKvsData>>,
 }
 
 struct BufReaderWithPos<R: Read + Seek> {
@@ -89,8 +94,8 @@ fn rebuild_map(log_entry_path: impl Into<PathBuf>) -> Result<HashMap<String, Log
 }
 
 impl KvStore {
-    pub fn new(path: impl Into<PathBuf>) -> KvStore {
-        let mut store_map = HashMap::new();
+    pub fn new(path: impl Into<PathBuf>) -> Self {
+        let store_map = HashMap::new();
         let path_buf = path.into();
 
         let metadata = MetaData {
@@ -98,52 +103,27 @@ impl KvStore {
             cur_file_end: 0,
             since_last_compact_log_num: 0,
         };
-        KvStore {
-            store_map,
+        let data = Arc::new(Mutex::new(MutableKvsData {
             metadata,
+            store_map,
+        }));
+        KvStore {
+            data
         }
     }
 
     pub fn new_with_data(metadata: MetaData, store_map: HashMap<String, LogPosition>) -> KvStore {
-        KvStore {
-            store_map,
+        let data = Arc::new(Mutex::new(MutableKvsData {
             metadata,
+            store_map,
+        }));
+        KvStore {
+            data
         }
     }
 
-    fn save_log_entry(&mut self, log_entry: &LogEntry) -> Result<LogPosition> {
-        let mut store_file = OpenOptions::new()
-            .create(true)
-            .write(true)
-            .append(true)
-            .open(&self.metadata.store_path.join("kvs_log_entry"))?;
-        let serialized_log = serde_json::to_vec(&log_entry)?;
-        store_file.write_all(&serialized_log)?;
-
-        let log_pos = LogPosition {
-            start: self.metadata.cur_file_end,
-            len: serialized_log.len(),
-        };
-        self.metadata.cur_file_end += serialized_log.len();
-        self.metadata.since_last_compact_log_num += 1;
-
-        Ok(log_pos)
-    }
-
-    fn save_metadata(&self) -> Result<()> {
-        let serialized_kvs = serde_json::to_string(&self.metadata)?;
-        let mut file = File::create(self.metadata.store_path.join("kvs_metadata"))?;
-        file.write_all(serialized_kvs.as_bytes())?;
-
-        Ok(())
-    }
-
     fn save_memory_map(&self) -> Result<()> {
-        let serialized_kvs = serde_json::to_string(&self.store_map)?;
-        let mut file = File::create(self.metadata.store_path.join("kvs_memory_map"))?;
-        file.write(serialized_kvs.as_bytes())?;
-
-        Ok(())
+        self.data.lock().unwrap().save_memory_map()
     }
 
     pub fn open(path: impl Into<PathBuf>) -> Result<KvStore> {
@@ -174,8 +154,7 @@ impl KvStore {
                     store_map_file.read_to_string(&mut store_map_contents)?;
                     store_map = serde_json::from_str(&store_map_contents)?;
                 }
-            }
-            else if log_entry_path.exists() {
+            } else if log_entry_path.exists() {
                 store_map = rebuild_map(log_entry_path)?;
             }
 
@@ -183,35 +162,114 @@ impl KvStore {
 
             let log_entry_file = File::open(path.join("kvs_log_entry"))?;
             let file_size = log_entry_file.metadata()?.len();
-            if file_size as usize != kvs.metadata.cur_file_end {
+            if file_size as usize != kvs.data.lock().unwrap().metadata.cur_file_end {
                 return Err(KvsError::RecordError());
             }
             Ok(kvs)
         }
     }
+}
 
-    fn write_new_log_entry_file(&mut self, content: &Vec<u8>) -> Result<()> {
-        let mut store_file = OpenOptions::new()
-            .create(true)
-            .write(true)
-            .append(true)
-            .open(&self.metadata.store_path.join("kvs_log_entry.new"))?;
-        store_file.write_all(content)?;
+impl Drop for KvStore {
+    fn drop(&mut self) {
+        self.save_memory_map().unwrap();
+    }
+}
 
-        rename(
-            &self.metadata.store_path.join("kvs_log_entry"),
-            &self.metadata.store_path.join("kvs_log_entry.bak"),
-        )?;
-        rename(
-            &self.metadata.store_path.join("kvs_log_entry.new"),
-            &self.metadata.store_path.join("kvs_log_entry"),
-        )?;
-        remove_file(&self.metadata.store_path.join("kvs_log_entry.bak"))?;
+impl KvsEngine for KvStore {
+    fn set(&self, key: String, value: String) -> Result<()> {
+        self.data.lock().unwrap().set(key, value)?;
+        Ok(())
+    }
+
+    fn get(&self, key: String) -> Result<Option<String>> {
+        self.data.lock().unwrap().get(key)
+    }
+
+    fn remove(&self, key: String) -> Result<()> {
+        self.data.lock().unwrap().remove(key)?;
+        Ok(())
+    }
+}
+
+impl MutableKvsData {
+    fn set(&mut self, key: String, value: String) -> Result<()> {
+        let log_entry = LogEntry::Set {
+            key: key.clone(),
+            value,
+        };
+        let log_pos = self.save_log_entry(&log_entry)?;
+        self.store_map.insert(key, log_pos);
+        self.save_metadata()?;
+
+        if self.metadata.since_last_compact_log_num > COMPACT_NUM_THRESHOLD {
+            self.compact()?;
+        }
 
         Ok(())
     }
 
-    pub fn compact(&mut self) -> Result<()> {
+    fn get(&self, key: String) -> Result<Option<String>> {
+        if self.store_map.contains_key(&key) {
+            let log_pos = self.store_map.get(&key).unwrap().clone();
+            let mut file = File::open(&self.metadata.store_path.join("kvs_log_entry"))?;
+            file.seek(SeekFrom::Start(log_pos.start as u64))?;
+            let mut buf = Vec::with_capacity(log_pos.len);
+            file.take(log_pos.len as u64).read_to_end(&mut buf)?;
+            let log_entry: LogEntry = serde_json::from_slice(&buf)?;
+            match log_entry {
+                LogEntry::Set { key: _, value } => Ok(Some(value)),
+                _ => Err(KvsError::Unknown),
+            }
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn remove(&mut self, key: String) -> Result<()> {
+        if !self.store_map.contains_key(&key) {
+            return Err(KvsError::KeyNotFound(key));
+        }
+        self.store_map.remove(&key);
+        let log_entry = LogEntry::Rm { key };
+        self.save_log_entry(&log_entry)?;
+        self.save_metadata()?;
+
+        if self.metadata.since_last_compact_log_num > COMPACT_NUM_THRESHOLD {
+            self.compact()?;
+        }
+
+        Ok(())
+    }
+
+    fn save_log_entry(&mut self, log_entry: &LogEntry) -> Result<LogPosition> {
+        let mut store_file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .append(true)
+            .open(&self.metadata.store_path.join("kvs_log_entry"))?;
+        let serialized_log = serde_json::to_vec(&log_entry)?;
+        store_file.write_all(&serialized_log)?;
+
+        let log_pos = LogPosition {
+            start: self.metadata.cur_file_end,
+            len: serialized_log.len(),
+        };
+        self.metadata.cur_file_end += serialized_log.len();
+        self.metadata.since_last_compact_log_num += 1;
+
+        Ok(log_pos)
+    }
+
+    fn save_metadata(&self) -> Result<()> {
+        let serialized_kvs = serde_json::to_string(&self.metadata)?;
+        let mut file = File::create(self.metadata.store_path.join("kvs_metadata"))?;
+        file.write_all(serialized_kvs.as_bytes())?;
+
+        Ok(())
+    }
+
+    fn compact(&mut self) -> Result<()> {
         self.metadata.cur_file_end = 0;
         self.metadata.since_last_compact_log_num = 0;
         let mut new_store_map: HashMap<String, LogPosition> = HashMap::new();
@@ -243,60 +301,32 @@ impl KvStore {
 
         Ok(())
     }
-}
 
-impl Drop for KvStore {
-    fn drop(&mut self) {
-        self.save_memory_map().unwrap();
-    }
-}
+    fn write_new_log_entry_file(&self, content: &Vec<u8>) -> Result<()> {
+        let mut store_file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .append(true)
+            .open(&self.metadata.store_path.join("kvs_log_entry.new"))?;
+        store_file.write_all(content)?;
 
-impl KvsEngine for KvStore {
-    fn set(&mut self, key: String, value: String) -> Result<()> {
-        let log_entry = LogEntry::Set {
-            key: key.clone(),
-            value,
-        };
-        let log_pos = self.save_log_entry(&log_entry)?;
-        self.store_map.insert(key, log_pos);
-        self.save_metadata()?;
-
-        if self.metadata.since_last_compact_log_num > COMPACT_NUM_THRESHOLD {
-            self.compact()?;
-        }
+        rename(
+            &self.metadata.store_path.join("kvs_log_entry"),
+            &self.metadata.store_path.join("kvs_log_entry.bak"),
+        )?;
+        rename(
+            &self.metadata.store_path.join("kvs_log_entry.new"),
+            &self.metadata.store_path.join("kvs_log_entry"),
+        )?;
+        remove_file(&self.metadata.store_path.join("kvs_log_entry.bak"))?;
 
         Ok(())
     }
 
-    fn get(&self, key: String) -> Result<Option<String>> {
-        if self.store_map.contains_key(&key) {
-            let log_pos = self.store_map.get(&key).unwrap();
-            let mut file = File::open(&self.metadata.store_path.join("kvs_log_entry"))?;
-            file.seek(SeekFrom::Start(log_pos.start as u64))?;
-            let mut buf = Vec::with_capacity(log_pos.len);
-            file.take(log_pos.len as u64).read_to_end(&mut buf)?;
-            let log_entry: LogEntry = serde_json::from_slice(&buf)?;
-            match log_entry {
-                LogEntry::Set { key: _, value } => Ok(Some(value)),
-                _ => Err(KvsError::Unknown),
-            }
-        } else {
-            Ok(None)
-        }
-    }
-
-    fn remove(&mut self, key: String) -> Result<()> {
-        if !self.store_map.contains_key(&key) {
-            return Err(KvsError::KeyNotFound(key));
-        }
-        self.store_map.remove(&key);
-        let log_entry = LogEntry::Rm { key };
-        self.save_log_entry(&log_entry)?;
-        self.save_metadata()?;
-
-        if self.metadata.since_last_compact_log_num > COMPACT_NUM_THRESHOLD {
-            self.compact()?;
-        }
+    fn save_memory_map(&self) -> Result<()> {
+        let serialized_kvs = serde_json::to_string(&self.store_map)?;
+        let mut file = File::create(self.metadata.store_path.join("kvs_memory_map"))?;
+        file.write(serialized_kvs.as_bytes())?;
 
         Ok(())
     }
