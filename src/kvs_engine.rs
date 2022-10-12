@@ -211,7 +211,7 @@ impl MutableKvsData {
 
     fn get(&self, key: String) -> Result<Option<String>> {
         if self.store_map.contains_key(&key) {
-            let log_pos = self.store_map.get(&key).unwrap().clone();
+            let log_pos = self.store_map.get(&key).unwrap();
             let mut file = File::open(&self.metadata.store_path.join("kvs_log_entry"))?;
             file.seek(SeekFrom::Start(log_pos.start as u64))?;
             let mut buf = Vec::with_capacity(log_pos.len);
@@ -280,7 +280,7 @@ impl MutableKvsData {
             let value = self.get(key.clone())?.unwrap_or_else(|| "".to_string());
             let log_entry = LogEntry::Set {
                 key: key.clone(),
-                value: value.clone(),
+                value,
             };
 
             let serialized_log = serde_json::to_vec(&log_entry)?;
