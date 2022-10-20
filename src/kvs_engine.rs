@@ -302,7 +302,7 @@ impl MutableKvsData {
         Ok(())
     }
 
-    fn write_new_log_entry_file(&self, content: &Vec<u8>) -> Result<()> {
+    fn write_new_log_entry_file(&self, content: &[u8]) -> Result<()> {
         let mut store_file = OpenOptions::new()
             .create(true)
             .write(true)
@@ -326,7 +326,7 @@ impl MutableKvsData {
     fn save_memory_map(&self) -> Result<()> {
         let serialized_kvs = serde_json::to_string(&self.store_map)?;
         let mut file = File::create(self.metadata.store_path.join("kvs_memory_map"))?;
-        file.write(serialized_kvs.as_bytes())?;
+        file.write_all(serialized_kvs.as_bytes())?;
 
         Ok(())
     }
