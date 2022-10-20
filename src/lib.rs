@@ -6,7 +6,7 @@ pub use engines::KvsEngine;
 pub use kvs_engine::KvStore;
 pub use server::KvsServer;
 pub use sled_engine::SledKvsEngine;
-pub use thread_pool::{ThreadPool, NaiveThreadPool};
+pub use thread_pool::{NaiveThreadPool, RayonThreadPool, SharedQueueThreadPool, ThreadPool};
 
 use crate::error::KvsError;
 

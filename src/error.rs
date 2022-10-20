@@ -1,5 +1,3 @@
-
-
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -21,6 +19,9 @@ pub enum KvsError {
 
     #[error(transparent)]
     SledError(#[from] sled::Error),
+
+    #[error(transparent)]
+    RayonBuilderError(#[from] rayon::ThreadPoolBuildError),
 
     #[error("unknown error")]
     Unknown,

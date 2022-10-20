@@ -3,30 +3,7 @@ use std::sync::mpsc;
 use std::sync::Mutex;
 use std::thread;
 
-use crate::Result;
-
-type Job = Box<dyn FnOnce() + Send + 'static>;
-
-pub trait ThreadPool {
-    fn new(threads: u32) -> Result<Self> where Self: Sized;
-    fn spawn<F>(&self, job: F) where F: FnOnce() + Send + 'static;
-}
-
-/// This isn't a real thread pool. DO NOT USE IN PRODUCTION.
-pub struct NaiveThreadPool {
-    thread_num: u32,
-}
-
-impl ThreadPool for NaiveThreadPool {
-    fn new(threads: u32) -> Result<Self> {
-        assert!(threads > 0);
-        Ok(NaiveThreadPool { thread_num: threads })
-    }
-
-    fn spawn<F>(&self, job: F) where F: FnOnce() + Send + 'static {
-        let _handle = thread::spawn(move || { job(); });
-    }
-}
+use super::{Job, Result, ThreadPool};
 
 enum JobOrShutdown {
     Job(Job),
@@ -34,7 +11,7 @@ enum JobOrShutdown {
 }
 
 pub struct SharedQueueThreadPool {
-    thread_num: u32,
+    thread_num: usize,
     sender: mpsc::Sender<JobOrShutdown>,
 }
 
@@ -54,7 +31,7 @@ fn spawn_in_pool(receiver: MyReceiver) {
 }
 
 impl ThreadPool for SharedQueueThreadPool {
-    fn new(threads: u32) -> Result<Self> {
+    fn new(threads: usize) -> Result<Self> {
         assert!(threads > 0);
 
         let (sender, receiver) = mpsc::channel();
@@ -89,20 +66,5 @@ impl Drop for MyReceiver {
         if thread::panicking() {
             spawn_in_pool(self.clone());
         }
-    }
-}
-
-pub struct RayonThreadPool {
-    thread_num: u32,
-}
-
-impl ThreadPool for RayonThreadPool {
-    fn new(threads: u32) -> Result<Self> {
-        assert!(threads > 0);
-        Ok(RayonThreadPool { thread_num: threads })
-    }
-
-    fn spawn<F>(&self, job: F) where F: FnOnce() + Send + 'static {
-        todo!()
     }
 }

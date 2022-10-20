@@ -19,6 +19,8 @@ slog = "2.7"
 slog-term = "2.8"
 slog-scope = "4.4"
 sled = "0.34"
+rayon = "1.5"
+num_cpus = "1.0"
 
 [dev-dependencies]
 assert_cmd = "2.0"

@@ -5,8 +5,8 @@ use std::process::exit;
 use serde_json::{Deserializer, to_writer};
 use slog_scope::{debug, error};
 
-use crate::{KvsEngine, Request, Response, Result, ThreadPool, NaiveThreadPool};
-use crate::thread_pool::SharedQueueThreadPool;
+use crate::{KvsEngine, Request, Response, Result};
+use crate::thread_pool::{SharedQueueThreadPool, ThreadPool};
 
 pub struct KvsServer<E: KvsEngine> {
     addr: SocketAddr,
@@ -26,7 +26,7 @@ impl<E: KvsEngine> KvsServer<E> {
                 exit(-1);
             }
         };
-        let thread_pool = SharedQueueThreadPool::new(4).unwrap();
+        let thread_pool = SharedQueueThreadPool::new(num_cpus::get()).unwrap();
 
         for stream in listener.incoming() {
             let engine = self.engine.clone();
